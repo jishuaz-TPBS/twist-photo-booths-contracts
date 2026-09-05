@@ -26,29 +26,40 @@
      in with their event details, they draw their signature and type
      their full name, and submit.
   3. On submit, the page (a) instantly gives the client a downloadable
-     PDF of their signed contract, and (b) sends the signed contract to
-     a Supabase backend, which stores it and emails you a notification
-     automatically.
+     PDF of their signed contract, and (b) sends the signed contract
+     (including that same PDF) to a Supabase backend, which stores it
+     and emails a copy to Twist Photo Booths automatically.
+  4. Staff can open "Signed Contracts" from the staff form to browse
+     every signed contract, view full details + the signature image,
+     download the signed PDF, or delete a contract entirely.
 
   BACKEND (Supabase + Resend)
   ----------------------------
-  This page uses two Supabase Edge Functions:
+  This page uses three Supabase Edge Functions:
     - signing-link (SIGNING_LINK_API_URL below) turns a booking into a
       short code when staff generate a link, and looks a short code
       back up into a booking when a client opens one. Codes live in
       the "signing_links" table.
     - submit-contract (CONTRACT_API_URL below) stores the final signed
-      contract + signature image and emails a notification via Resend
-      once a client actually signs. Signed contracts live in the
-      "contracts" table.
-  Both tables have RLS enabled with zero policies — only the Edge
-  Functions (via the service role key) can read or write them. To view
-  signed contracts, open the Supabase dashboard for this project and
-  look at the "contracts" table (Table Editor).
+      contract + signature image + full signed PDF, and emails a copy
+      (PDF attached) to twistpbs@gmail.com via Resend once a client
+      actually signs. Signed contracts live in the "contracts" table;
+      signature images and PDFs live in the private "signatures" and
+      "contract-pdfs" storage buckets.
+    - admin-contracts (ADMIN_CONTRACTS_API_URL below) powers the
+      "Signed Contracts" panel in the staff form: listing, viewing
+      full detail (with short-lived signed URLs for the signature/PDF),
+      and deleting a contract. It checks the same STAFF_PASSCODE as a
+      header, so this data isn't wide open to the internet — if you
+      change the passcode below, update the copy hardcoded in that
+      function too (see the Supabase dashboard).
+  All three tables/buckets have RLS enabled with zero policies — only
+  the Edge Functions (via the service role key) can read or write them.
 
   TWO THINGS TO CONFIGURE BEFORE GOING LIVE
   --------------------------------------------
-  1. STAFF_PASSCODE below — change it from the default.
+  1. STAFF_PASSCODE below — change it from the default. (Also update
+     the copy of it hardcoded in the admin-contracts Edge Function.)
   2. CONTRACT_TEMPLATES further down — these are draft agreements
      (currently "standard" and "prints"). Swap in your real wording
      whenever you're ready (this is NOT legal advice — have an
@@ -270,6 +281,17 @@
     margin-bottom:10px;
   }
   .landing{text-align:center; padding:50px 10px;}
+  .contract-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:14px;
+    padding:12px 0;
+    border-bottom:1px solid var(--accent3);
+  }
+  .contract-row:last-child{border-bottom:none;}
+  .contract-row-main{font-size:0.88rem;}
+  .contract-row-actions{display:flex; gap:8px; flex-shrink:0;}
   footer.legal{
     text-align:center;
     font-size:0.72rem;
@@ -431,12 +453,34 @@ const CONTRACT_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/
 // data-filled URL. See the Supabase dashboard (Edge Functions > signing-link).
 const SIGNING_LINK_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/signing-link";
 
+// Supabase Edge Function staff use to list, view, and delete signed
+// contracts from the "Signed Contracts" panel. Requires the same
+// STAFF_PASSCODE as a header (see the admin-contracts function source in
+// the Supabase dashboard) so this data isn't wide open to the internet.
+const ADMIN_CONTRACTS_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/admin-contracts";
+
 /* =========================================================================
    Helpers
    ========================================================================= */
 
 function fillTemplate(str, data){
   return str.replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] !== undefined && data[k] !== "") ? data[k] : `[${k}]`);
+}
+
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function arrayBufferToBase64(buffer){
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function b64EncodeUnicode(str){
@@ -569,14 +613,15 @@ function renderStaffForm(){
     </div>
 
     <div class="card">
-      <h2>View Signed Contracts</h2>
-      <p class="muted">Every signed contract is stored automatically in the project's Supabase
-      database (table: <strong>contracts</strong>) and emails you a notification the moment a
-      client signs. Open the Supabase dashboard for this project and use the Table Editor to see
-      every signed contract, or click a row to see the client's details and a link to their
-      stored signature image.</p>
+      <h2>Signed Contracts<small>View, download, or delete a client's signed contract.</small></h2>
+      <p class="muted">Every signed contract is stored automatically, including a full copy of
+      the signed PDF and signature, and Twist Photo Booths is emailed a copy the moment a client
+      signs.</p>
+      <button class="secondary" id="viewContracts">View Signed Contracts</button>
     </div>
   `;
+
+  document.getElementById('viewContracts').onclick = renderContractsList;
 
   document.getElementById('genLink').onclick = async () => {
     const data = {
@@ -652,6 +697,132 @@ function renderStaffForm(){
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = orig, 1500);
   };
+}
+
+/* =========================================================================
+   VIEW: Staff — signed contracts list / detail / delete
+   ========================================================================= */
+function renderContractsList(){
+  staffToggleWrap.style.display = 'none';
+  app.innerHTML = `
+    <div class="card">
+      <span class="badge">Staff</span>
+      <h2>Signed Contracts<small>View, download, or delete a client's signed contract.</small></h2>
+      <div id="contractsListBody"><p class="muted">Loading…</p></div>
+      <button class="secondary" id="backToStaffForm" style="margin-top:20px;">← Back to Create Signing Link</button>
+    </div>
+  `;
+  document.getElementById('backToStaffForm').onclick = renderStaffForm;
+  loadContractsList();
+}
+
+async function loadContractsList(){
+  const body = document.getElementById('contractsListBody');
+  try {
+    const resp = await fetch(ADMIN_CONTRACTS_API_URL, {
+      headers: { 'x-staff-passcode': STAFF_PASSCODE }
+    });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok || !result || !result.ok){
+      body.innerHTML = `<p class="error-text" style="display:block;">Could not load contracts${result && result.error ? ': ' + escapeHtml(result.error) : '.'}</p>`;
+      return;
+    }
+    const contracts = result.contracts || [];
+    if(contracts.length === 0){
+      body.innerHTML = `<p class="muted">No signed contracts yet.</p>`;
+      return;
+    }
+    body.innerHTML = contracts.map(c => `
+      <div class="contract-row">
+        <div class="contract-row-main">
+          <div><strong>${escapeHtml(c.client_name || 'Unnamed client')}</strong> — ${escapeHtml(fmtDate(c.event_date) || 'no event date')}</div>
+          <div class="muted">${escapeHtml(c.package_name || '')}${c.price ? ' · ' + escapeHtml(fmtMoney(c.price)) : ''}${c.signed_at ? ' · signed ' + escapeHtml(new Date(c.signed_at).toLocaleString()) : ''}</div>
+        </div>
+        <div class="contract-row-actions">
+          <button class="secondary" data-action="view" data-id="${c.id}">View</button>
+          <button class="secondary" data-action="delete" data-id="${c.id}">Delete</button>
+        </div>
+      </div>
+    `).join('');
+
+    body.querySelectorAll('button[data-action="view"]').forEach(b => {
+      b.onclick = () => showContractDetail(b.dataset.id);
+    });
+    body.querySelectorAll('button[data-action="delete"]').forEach(b => {
+      b.onclick = () => deleteContract(b.dataset.id);
+    });
+  } catch(e){
+    body.innerHTML = `<p class="error-text" style="display:block;">Could not reach the contracts service.</p>`;
+  }
+}
+
+async function showContractDetail(id){
+  staffToggleWrap.style.display = 'none';
+  app.innerHTML = `
+    <div class="card">
+      <span class="badge">Staff</span>
+      <h2>Contract Details<small>Full booking record, signature, and signed PDF.</small></h2>
+      <div id="contractDetailBody"><p class="muted">Loading…</p></div>
+      <button class="secondary" id="backToContractsList" style="margin-top:20px;">← Back to Signed Contracts</button>
+    </div>
+  `;
+  document.getElementById('backToContractsList').onclick = renderContractsList;
+
+  const body = document.getElementById('contractDetailBody');
+  try {
+    const resp = await fetch(`${ADMIN_CONTRACTS_API_URL}?id=${encodeURIComponent(id)}`, {
+      headers: { 'x-staff-passcode': STAFF_PASSCODE }
+    });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok || !result || !result.ok || !result.contract){
+      body.innerHTML = `<p class="error-text" style="display:block;">Could not load this contract${result && result.error ? ': ' + escapeHtml(result.error) : '.'}</p>`;
+      return;
+    }
+    const c = result.contract;
+    const facts = [
+      ['Client', c.client_name], ['Email', c.client_email], ['Phone', c.client_phone],
+      ['Event date', fmtDate(c.event_date)], ['Event type', c.event_type], ['Venue', c.venue_name],
+      ['Package', c.package_name], ['Total price', fmtMoney(c.price)], ['Deposit', fmtMoney(c.deposit)],
+      ['Balance due', fmtDate(c.balance_due_date)], ['Notes', c.notes],
+      ['Signed name', c.signed_name],
+      ['Signed at', c.signed_at ? new Date(c.signed_at).toLocaleString() : ''],
+      ['Booking ID', c.booking_id]
+    ];
+    const factsHtml = facts.map(([k,v]) => `<div><span class="label">${escapeHtml(k)}</span>${v ? escapeHtml(String(v)) : '—'}</div>`).join('');
+
+    body.innerHTML = `
+      <div class="fact-grid">${factsHtml}</div>
+      <label>Signature</label>
+      ${result.signatureUrl
+        ? `<img src="${result.signatureUrl}" alt="Client signature" style="max-width:280px; border:1px solid #d8d2cb; border-radius:8px; background:#fff; display:block;">`
+        : '<p class="muted">No signature image on file.</p>'}
+      <div style="margin-top:18px;">
+        ${result.pdfUrl
+          ? `<a href="${result.pdfUrl}" target="_blank" rel="noopener" class="secondary" style="display:inline-block; text-decoration:none; text-align:center;">Download PDF</a>`
+          : '<p class="muted">No PDF on file (this contract predates PDF storage).</p>'}
+      </div>
+    `;
+  } catch(e){
+    body.innerHTML = `<p class="error-text" style="display:block;">Could not reach the contracts service.</p>`;
+  }
+}
+
+async function deleteContract(id){
+  if(!confirm('Delete this signed contract permanently? This cannot be undone.')) return;
+  try {
+    const resp = await fetch(`${ADMIN_CONTRACTS_API_URL}?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'x-staff-passcode': STAFF_PASSCODE }
+    });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok || !result || !result.ok){
+      alert('Could not delete this contract' + (result && result.error ? ': ' + result.error : '.'));
+      return;
+    }
+    loadContractsList();
+  } catch(e){
+    alert('Could not reach the contracts service.');
+  }
 }
 
 /* =========================================================================
@@ -797,14 +968,18 @@ async function handleSubmit(booking, filled){
   const signatureDataUrl = canvas.toDataURL('image/png');
   const signedAt = new Date().toISOString();
 
+  // Give the client their PDF right away, regardless of backend outcome.
+  // This also hands back the same PDF as base64 so the backend can store
+  // it and email it as an attachment — the client and Twist Photo Booths
+  // both get the exact same document.
+  const pdfBase64 = generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt);
+
   const payload = Object.assign({}, booking, {
     signedName: typedName,
     signature: signatureDataUrl,
-    signedAt: signedAt
+    signedAt: signedAt,
+    pdfBase64: pdfBase64 || null
   });
-
-  // Give the client their PDF right away, regardless of backend outcome.
-  generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt);
 
   // Send the signed contract to the Supabase backend (stores it + emails
   // Twist Photo Booths). If this fails (e.g. no network), the client still
@@ -888,8 +1063,16 @@ function generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedA
 
     const safeName = (typedName || 'client').replace(/[^a-z0-9]+/gi, '-');
     doc.save(`Twist-Photo-Booths-Contract-${safeName}.pdf`);
+
+    try {
+      return arrayBufferToBase64(doc.output('arraybuffer'));
+    } catch(e){
+      console.error('Could not capture PDF for backend/email', e);
+      return null;
+    }
   } catch(err){
     console.error('PDF generation failed', err);
+    return null;
   }
 }
 
