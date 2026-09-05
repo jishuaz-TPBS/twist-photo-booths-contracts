@@ -14,13 +14,17 @@
   1. You (staff) open this page and click "Staff Login" at the very
      bottom, enter your passcode, and fill in a booking's details
      (client name, event date, package, price, etc). Clicking
-     "Generate Signing Link" builds a unique link with that booking's
-     details baked right into the URL — nothing is stored on a server
-     for this step, so it works the instant you host this file.
+     "Generate Signing Link" asks the Supabase backend for a short
+     code and builds a short link like "...?c=AB12CD34" — the booking
+     details live in Supabase, not in the URL, so the link looks clean
+     and trustworthy instead of like a wall of gibberish. (If the
+     backend can't be reached at that moment, it falls back to an
+     older, longer link format with the booking baked right into the
+     URL, so staff always get a working link either way.)
   2. You send that link to your client (text/email). When they open
-     it, they see the contract already filled in with their event
-     details, they draw their signature and type their full name, and
-     submit.
+     it, the page looks up the short code, shows the contract filled
+     in with their event details, they draw their signature and type
+     their full name, and submit.
   3. On submit, the page (a) instantly gives the client a downloadable
      PDF of their signed contract, and (b) sends the signed contract to
      a Supabase backend, which stores it and emails you a notification
@@ -28,11 +32,19 @@
 
   BACKEND (Supabase + Resend)
   ----------------------------
-  This page posts each signed contract to a Supabase Edge Function
-  (CONTRACT_API_URL below), which stores the record + signature image
-  in a private Supabase table/bucket and emails a notification via
-  Resend. To view signed contracts, open the Supabase dashboard for
-  this project and look at the "contracts" table (Table Editor).
+  This page uses two Supabase Edge Functions:
+    - signing-link (SIGNING_LINK_API_URL below) turns a booking into a
+      short code when staff generate a link, and looks a short code
+      back up into a booking when a client opens one. Codes live in
+      the "signing_links" table.
+    - submit-contract (CONTRACT_API_URL below) stores the final signed
+      contract + signature image and emails a notification via Resend
+      once a client actually signs. Signed contracts live in the
+      "contracts" table.
+  Both tables have RLS enabled with zero policies — only the Edge
+  Functions (via the service role key) can read or write them. To view
+  signed contracts, open the Supabase dashboard for this project and
+  look at the "contracts" table (Table Editor).
 
   TWO THINGS TO CONFIGURE BEFORE GOING LIVE
   --------------------------------------------
@@ -413,6 +425,12 @@ function getContractTemplate(booking){
 // submit-contract) to view or redeploy this function.
 const CONTRACT_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/submit-contract";
 
+// Supabase Edge Function that turns a booking into a short code (POST) and
+// resolves a short code back into a booking (GET ?code=). This is what
+// keeps signing links short and clean instead of a long, scary-looking
+// data-filled URL. See the Supabase dashboard (Edge Functions > signing-link).
+const SIGNING_LINK_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/signing-link";
+
 /* =========================================================================
    Helpers
    ========================================================================= */
@@ -457,13 +475,22 @@ const params = new URLSearchParams(window.location.search);
 /* =========================================================================
    VIEW: Landing (no booking id in the link)
    ========================================================================= */
-function renderLanding(){
+function renderLanding(notFound){
   app.innerHTML = `
     <div class="card landing">
-      <h2 style="border:none;">Looking for your contract?</h2>
-      <p class="muted">This page needs a personalized signing link. If Twist Photo Booths sent
-      you one, please open that exact link from your email or text message. If you can't find
-      it, reach out and we'll resend it.</p>
+      <h2 style="border:none;">${notFound ? "We couldn't load your contract" : "Looking for your contract?"}</h2>
+      <p class="muted">${notFound
+        ? "That link may have expired or been copied incorrectly. If Twist Photo Booths sent you a link, please open it directly from your email or text message, or reach out and we'll resend it."
+        : "This page needs a personalized signing link. If Twist Photo Booths sent you one, please open that exact link from your email or text message. If you can't find it, reach out and we'll resend it."}</p>
+    </div>
+  `;
+}
+
+function renderLoadingContract(){
+  app.innerHTML = `
+    <div class="card landing">
+      <h2 style="border:none;">Loading your contract…</h2>
+      <p class="muted">One moment while we pull up your booking details.</p>
     </div>
   `;
 }
@@ -551,7 +578,7 @@ function renderStaffForm(){
     </div>
   `;
 
-  document.getElementById('genLink').onclick = () => {
+  document.getElementById('genLink').onclick = async () => {
     const data = {
       id: makeBookingId(),
       contractType: document.getElementById('f_contractType').value,
@@ -572,9 +599,42 @@ function renderStaffForm(){
       alert('Please fill in at least the client name and event date.');
       return;
     }
-    const encoded = encodeBooking(data);
+
+    const genBtn = document.getElementById('genLink');
+    const origLabel = genBtn.textContent;
+    genBtn.disabled = true;
+    genBtn.textContent = 'Generating…';
+
     const base = window.location.origin + window.location.pathname;
-    const link = `${base}?b=${encoded}`;
+    let link = null;
+
+    // Preferred: ask the backend for a short code, so the link we hand the
+    // client is short and doesn't look like a wall of gibberish.
+    try {
+      const resp = await fetch(SIGNING_LINK_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      const result = await resp.json().catch(() => ({}));
+      if(resp.ok && result && result.ok && result.code){
+        link = `${base}?c=${result.code}`;
+      }
+    } catch(e){
+      // network/backend hiccup — fall through to the fallback below
+    }
+
+    // Fallback: if the short-link service is unreachable, still hand staff
+    // a working link (the older, longer self-contained format) rather than
+    // blocking them entirely.
+    if(!link){
+      const encoded = encodeBooking(data);
+      link = `${base}?b=${encoded}`;
+    }
+
+    genBtn.disabled = false;
+    genBtn.textContent = origLabel;
+
     document.getElementById('linkResult').style.display = 'block';
     document.getElementById('linkOut').value = link;
   };
@@ -851,8 +911,26 @@ function renderSuccess(backendConfigured){
    ========================================================================= */
 staffToggle.onclick = renderStaffLogin;
 
+const cParam = params.get('c');
 const bParam = params.get('b');
-if(bParam){
+
+if(cParam){
+  // Short-code link (current format): resolve it via the signing-link
+  // Edge Function, which looks up the real booking data server-side.
+  renderLoadingContract();
+  fetch(`${SIGNING_LINK_API_URL}?code=${encodeURIComponent(cParam)}`)
+    .then(resp => resp.json().catch(() => ({})).then(result => ({ ok: resp.ok, result })))
+    .then(({ ok, result }) => {
+      if(ok && result && result.ok && result.booking){
+        renderSigningPage(result.booking);
+      } else {
+        renderLanding(true);
+      }
+    })
+    .catch(() => renderLanding(true));
+} else if(bParam){
+  // Older, self-contained link format (booking data baked into the URL).
+  // Still supported so any already-sent links keep working.
   const booking = decodeBooking(bParam);
   if(booking){
     renderSigningPage(booking);
