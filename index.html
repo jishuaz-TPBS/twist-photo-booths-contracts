@@ -22,33 +22,32 @@
      details, they draw their signature and type their full name, and
      submit.
   3. On submit, the page (a) instantly gives the client a downloadable
-     PDF of their signed contract, and (b) — once you finish the short
-     one-time setup below — sends you an email and logs the signed
-     contract to a Google Sheet you can check from any device.
+     PDF of their signed contract, and (b) sends the signed contract to
+     a Supabase backend, which stores it and emails you a notification
+     automatically.
 
-  THREE THINGS TO CONFIGURE BEFORE GOING LIVE
+  BACKEND (Supabase + Resend)
+  ----------------------------
+  This page posts each signed contract to a Supabase Edge Function
+  (CONTRACT_API_URL below), which stores the record + signature image
+  in a private Supabase table/bucket and emails a notification via
+  Resend. To view signed contracts, open the Supabase dashboard for
+  this project and look at the "contracts" table (Table Editor).
+
+  TWO THINGS TO CONFIGURE BEFORE GOING LIVE
   --------------------------------------------
   1. STAFF_PASSCODE below — change it from the default.
-  2. APPS_SCRIPT_URL below — see "twist-contracts-backend.gs" (sent
-     alongside this file) for the ~5 minute setup that gives you
-     automatic email notifications + a Google Sheet dashboard. Until
-     you paste a real URL in, clients can still sign and download
-     their PDF — you just won't get an automatic copy.
-  3. CONTRACT_TEMPLATE further down — this is a standard draft
+  2. CONTRACT_TEMPLATE further down — this is a standard draft
      agreement. Swap in your real wording whenever you're ready
      (this is NOT legal advice — have an attorney review your final
      terms).
 
   HOSTING
   -------
-  This is a single, self-contained HTML file. It needs to live
-  somewhere your clients can open it from a normal web link — e.g. a
-  page on your existing Twist Photo Booths website (most site builders
-  like Wix/Squarespace/GoDaddy let you embed or upload custom HTML),
-  or a free static host like Netlify Drop. It will NOT work as a
-  Claude.ai artifact link, because signing needs to reach your email
-  from your CLIENT's browser, and Claude's hosted pages can't make
-  outside network calls.
+  This is a single, self-contained HTML file, hosted here via GitHub
+  Pages. It will NOT work as a Claude.ai artifact link, because
+  signing needs to reach the Supabase backend from your CLIENT's
+  browser, and Claude's hosted pages can't make outside network calls.
   =========================================================================
 -->
 
@@ -298,19 +297,13 @@
 
 <script>
 /* =========================================================================
-   CONFIG — edit these three things
+   CONFIG — edit these two things
    ========================================================================= */
 
 // 1) Change this before you start using the page for real.
 const STAFF_PASSCODE = "twist2026";
 
-// 2) Paste your deployed Google Apps Script Web App URL here (see the
-//    companion file "twist-contracts-backend.gs" for setup steps).
-//    Leave blank ("") to run without automatic email/dashboard for now —
-//    clients can still sign and download their PDF.
-const APPS_SCRIPT_URL = "";
-
-// 3) DRAFT CONTRACT TEXT — standard photo booth rental agreement.
+// 2) DRAFT CONTRACT TEXT — standard photo booth rental agreement.
 //    This is a general template, not legal advice. Replace with your
 //    finalized wording whenever you're ready. {{fields}} are filled in
 //    automatically from the booking link.
@@ -356,6 +349,11 @@ const CONTRACT_TEMPLATE = {
   ],
   signBlock: "By typing my name and signing below, I, {{clientName}}, confirm that I have read, understood, and agree to the terms of this Agreement, and that my electronic signature below is intended to have the same legal effect as a handwritten signature."
 };
+
+// Supabase Edge Function endpoint that stores signed contracts and emails
+// a notification. See the project's Supabase dashboard (Edge Functions >
+// submit-contract) to view or redeploy this function.
+const CONTRACT_API_URL = "https://mklxquarwjyyegkxtyvv.supabase.co/functions/v1/submit-contract";
 
 /* =========================================================================
    Helpers
@@ -482,10 +480,11 @@ function renderStaffForm(){
 
     <div class="card">
       <h2>View Signed Contracts</h2>
-      <p class="muted">Once you've completed the Google Sheet + email setup (see
-      "twist-contracts-backend.gs"), every signed contract lands automatically in your
-      Google Sheet and inbox — that Sheet is your dashboard of everything signed.
-      ${APPS_SCRIPT_URL ? '' : '<br><br><strong>Backend not configured yet</strong> — signed contracts currently only download as a PDF for the client; you will not get an automatic copy until APPS_SCRIPT_URL is set in this file.'}</p>
+      <p class="muted">Every signed contract is stored automatically in the project's Supabase
+      database (table: <strong>contracts</strong>) and emails you a notification the moment a
+      client signs. Open the Supabase dashboard for this project and use the Table Editor to see
+      every signed contract, or click a row to see the client's details and a link to their
+      stored signature image.</p>
     </div>
   `;
 
@@ -654,7 +653,7 @@ function setupSignaturePad(){
   };
 }
 
-function handleSubmit(booking, filled){
+async function handleSubmit(booking, filled){
   const typedName = document.getElementById('typedName').value.trim();
   const agreed = document.getElementById('agreeBox').checked;
   const canvas = document.getElementById('sigPad');
@@ -678,18 +677,26 @@ function handleSubmit(booking, filled){
     signedAt: signedAt
   });
 
-  // Fire-and-forget to the Apps Script backend, if configured.
-  if(APPS_SCRIPT_URL){
-    fetch(APPS_SCRIPT_URL, {
+  // Give the client their PDF right away, regardless of backend outcome.
+  generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt);
+
+  // Send the signed contract to the Supabase backend (stores it + emails
+  // Twist Photo Booths). If this fails (e.g. no network), the client still
+  // has their PDF — we just show a message asking them to send it over.
+  let backendOk = false;
+  try {
+    const resp = await fetch(CONTRACT_API_URL, {
       method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'text/plain' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
-    }).catch(() => { /* fire-and-forget: ignore network errors here */ });
+    });
+    const result = await resp.json().catch(() => ({}));
+    backendOk = resp.ok && result && result.ok !== false;
+  } catch(e){
+    backendOk = false;
   }
 
-  generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt);
-  renderSuccess(!!APPS_SCRIPT_URL);
+  renderSuccess(backendOk);
 }
 
 function generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt){
@@ -767,7 +774,7 @@ function renderSuccess(backendConfigured){
       <p class="muted">A PDF copy of your signed agreement has been downloaded to your device.
       ${backendConfigured
         ? 'Twist Photo Booths has also been notified automatically.'
-        : 'Please also send a copy of that PDF to Twist Photo Booths to complete your booking.'}</p>
+        : 'We had trouble reaching our system just now — please also send a copy of that PDF to Twist Photo Booths to complete your booking.'}</p>
     </div>
   `;
 }
