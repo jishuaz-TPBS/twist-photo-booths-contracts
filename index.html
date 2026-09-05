@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Twist Photo Booths — Event Contract</title>
+
+<!--
+  =========================================================================
+  TWIST PHOTO BOOTHS — EVENT CONTRACT & E-SIGNATURE PAGE
+  =========================================================================
+  HOW THIS WORKS
+  --------------
+  1. You (staff) open this page and click "Staff Login" at the very
+     bottom, enter your passcode, and fill in a booking's details
+     (client name, event date, package, price, etc). Clicking
+     "Generate Signing Link" builds a unique link with that booking's
+     details baked right into the URL — nothing is stored on a server
+     for this step, so it works the instant you host this file.
+  2. You send that link to your client (text/email). When they open
+     it, they see the contract already filled in with their event
+     details, they draw their signature and type their full name, and
+     submit.
+  3. On submit, the page (a) instantly gives the client a downloadable
+     PDF of their signed contract, and (b) — once you finish the short
+     one-time setup below — sends you an email and logs the signed
+     contract to a Google Sheet you can check from any device.
+
+  THREE THINGS TO CONFIGURE BEFORE GOING LIVE
+  --------------------------------------------
+  1. STAFF_PASSCODE below — change it from the default.
+  2. APPS_SCRIPT_URL below — see "twist-contracts-backend.gs" (sent
+     alongside this file) for the ~5 minute setup that gives you
+     automatic email notifications + a Google Sheet dashboard. Until
+     you paste a real URL in, clients can still sign and download
+     their PDF — you just won't get an automatic copy.
+  3. CONTRACT_TEMPLATE further down — this is a standard draft
+     agreement. Swap in your real wording whenever you're ready
+     (this is NOT legal advice — have an attorney review your final
+     terms).
+
+  HOSTING
+  -------
+  This is a single, self-contained HTML file. It needs to live
+  somewhere your clients can open it from a normal web link — e.g. a
+  page on your existing Twist Photo Booths website (most site builders
+  like Wix/Squarespace/GoDaddy let you embed or upload custom HTML),
+  or a free static host like Netlify Drop. It will NOT work as a
+  Claude.ai artifact link, because signing needs to reach your email
+  from your CLIENT's browser, and Claude's hosted pages can't make
+  outside network calls.
+  =========================================================================
+-->
+
+<style>
+  :root{
+    --bg: #efeae6;
+    --ink: #1d1d1d;
+    --ink-soft: #4a4744;
+    --accent1: #b3d6d3;
+    --accent2: #c7ddd9;
+    --accent3: #dbe3e0;
+    --white: #fffdfb;
+    --danger: #b3524a;
+    --radius: 14px;
+    --shadow: 0 6px 24px rgba(29,29,29,0.08);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    line-height:1.55;
+    min-height:100vh;
+  }
+  .wrap{
+    max-width:760px;
+    margin:0 auto;
+    padding:32px 20px 80px;
+  }
+  header.site{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:28px;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:12px;
+  }
+  .brand .mark{
+    width:40px;height:40px;border-radius:50%;
+    background: linear-gradient(135deg, var(--accent1), var(--accent3));
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;color:var(--ink);
+    flex-shrink:0;
+  }
+  .brand h1{
+    font-size:1.25rem;
+    margin:0;
+    letter-spacing:0.02em;
+  }
+  .brand p{
+    margin:0;
+    font-size:0.8rem;
+    color:var(--ink-soft);
+  }
+  .card{
+    background:var(--white);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:28px;
+    margin-bottom:20px;
+  }
+  h2{
+    font-size:1.05rem;
+    margin:0 0 10px;
+    border-bottom:1px solid var(--accent3);
+    padding-bottom:8px;
+  }
+  h2 small{
+    display:block;
+    font-weight:400;
+    color:var(--ink-soft);
+    font-size:0.78rem;
+    margin-top:2px;
+  }
+  .contract-body p{margin:0 0 12px; font-size:0.92rem;}
+  .contract-body h3{font-size:0.92rem; margin:18px 0 6px;}
+  .fact-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px 20px;
+    background:var(--accent3);
+    border-radius:10px;
+    padding:16px 18px;
+    margin:0 0 18px;
+    font-size:0.88rem;
+  }
+  .fact-grid div span.label{display:block; color:var(--ink-soft); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em;}
+  label{
+    display:block;
+    font-size:0.82rem;
+    font-weight:600;
+    margin:14px 0 6px;
+  }
+  input[type=text], input[type=email], input[type=tel], input[type=date], input[type=number], textarea, select{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #d8d2cb;
+    border-radius:8px;
+    font-size:0.92rem;
+    font-family:inherit;
+    background:var(--white);
+    color:var(--ink);
+  }
+  textarea{resize:vertical; min-height:70px;}
+  .checkbox-row{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    margin:16px 0;
+    font-size:0.86rem;
+  }
+  .checkbox-row input{margin-top:3px;}
+  canvas#sigPad{
+    width:100%;
+    height:180px;
+    border:1.5px dashed #b9b2a8;
+    border-radius:10px;
+    background:var(--white);
+    touch-action:none;
+    cursor:crosshair;
+  }
+  .sig-actions{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:8px;
+  }
+  .sig-actions button{
+    background:none;
+    border:none;
+    color:var(--ink-soft);
+    font-size:0.8rem;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:4px;
+  }
+  button.primary{
+    background:var(--ink);
+    color:var(--white);
+    border:none;
+    padding:13px 22px;
+    border-radius:9px;
+    font-size:0.95rem;
+    font-weight:600;
+    cursor:pointer;
+    width:100%;
+    margin-top:18px;
+    transition:opacity .15s;
+  }
+  button.primary:disabled{opacity:0.4; cursor:not-allowed;}
+  button.primary:hover:not(:disabled){opacity:0.88;}
+  button.secondary{
+    background:var(--accent2);
+    color:var(--ink);
+    border:none;
+    padding:11px 18px;
+    border-radius:9px;
+    font-size:0.88rem;
+    font-weight:600;
+    cursor:pointer;
+  }
+  .error-text{color:var(--danger); font-size:0.8rem; margin-top:6px; display:none;}
+  .success-screen{text-align:center; padding:40px 10px;}
+  .success-screen .icon{
+    width:64px;height:64px;border-radius:50%;
+    background:var(--accent1);
+    display:flex;align-items:center;justify-content:center;
+    margin:0 auto 18px;
+    font-size:1.8rem;
+  }
+  .muted{color:var(--ink-soft); font-size:0.82rem;}
+  .staff-toggle{
+    text-align:center;
+    margin-top:36px;
+  }
+  .staff-toggle a{
+    color:var(--ink-soft);
+    font-size:0.78rem;
+    text-decoration:underline;
+    cursor:pointer;
+  }
+  #linkOut{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #d8d2cb;
+    border-radius:8px;
+    font-size:0.82rem;
+    background:var(--accent3);
+    margin-top:6px;
+    word-break:break-all;
+  }
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:0 16px;}
+  .badge{
+    display:inline-block;
+    background:var(--accent1);
+    color:var(--ink);
+    font-size:0.7rem;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    padding:3px 9px;
+    border-radius:20px;
+    margin-bottom:10px;
+  }
+  .landing{text-align:center; padding:50px 10px;}
+  footer.legal{
+    text-align:center;
+    font-size:0.72rem;
+    color:var(--ink-soft);
+    margin-top:30px;
+    line-height:1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site">
+    <div class="brand">
+      <div class="mark">T</div>
+      <div>
+        <h1>Twist Photo Booths</h1>
+        <p>Event Booking Agreement</p>
+      </div>
+    </div>
+  </header>
+
+  <div id="app"></div>
+
+  <div class="staff-toggle" id="staffToggleWrap">
+    <a id="staffToggle">Staff Login</a>
+  </div>
+
+  <footer class="legal">
+    This page is provided by Twist Photo Booths for the purpose of reviewing and electronically
+    signing event booking agreements. Electronic signatures collected here are intended to be
+    used and treated as originals between the parties.
+  </footer>
+</div>
+
+<!-- jsPDF for client-side PDF generation of the signed copy -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+/* =========================================================================
+   CONFIG — edit these three things
+   ========================================================================= */
+
+// 1) Change this before you start using the page for real.
+const STAFF_PASSCODE = "twist2026";
+
+// 2) Paste your deployed Google Apps Script Web App URL here (see the
+//    companion file "twist-contracts-backend.gs" for setup steps).
+//    Leave blank ("") to run without automatic email/dashboard for now —
+//    clients can still sign and download their PDF.
+const APPS_SCRIPT_URL = "";
+
+// 3) DRAFT CONTRACT TEXT — standard photo booth rental agreement.
+//    This is a general template, not legal advice. Replace with your
+//    finalized wording whenever you're ready. {{fields}} are filled in
+//    automatically from the booking link.
+const CONTRACT_TEMPLATE = {
+  intro: "This Event Booking Agreement (\"Agreement\") is entered into between Twist Photo Booths (\"Company\") and {{clientName}} (\"Client\") for photo booth services at the event described below.",
+  sections: [
+    {
+      h: "1. Event & Services",
+      p: "Company will provide photo booth services for Client's event on {{eventDate}} at {{venueName}}, for the package selected: {{packageName}}. Services include use of the photo booth, an on-site attendant for the duration of the rental period, standard props, unlimited sessions during the rental window, and a digital gallery of images after the event, unless otherwise noted in Client's package."
+    },
+    {
+      h: "2. Payment Terms",
+      p: "The total price for services is {{price}}. A non-refundable deposit of {{deposit}} is due at the time of booking to reserve the event date. The remaining balance is due in full no later than {{balanceDueDate}}. Company reserves the right to treat the booking as cancelled if the balance is not received by that date."
+    },
+    {
+      h: "3. Cancellation & Rescheduling",
+      p: "The deposit is non-refundable under any circumstances, as it reserves Company's availability for the event date. Client may request to reschedule to another available date at no additional fee if written notice is given at least 30 days before the event, subject to Company's availability. Cancellations made less than 14 days before the event remain responsible for the full remaining balance."
+    },
+    {
+      h: "4. Overtime",
+      p: "If Client wishes to extend photo booth service beyond the contracted hours, and Company is able to accommodate the request, additional time will be billed at Company's then-current overtime rate, payable on the day of the event before extended service begins."
+    },
+    {
+      h: "5. Client Responsibilities",
+      p: "Client is responsible for providing adequate space, a standard electrical outlet within reasonable distance of the booth setup, and safe, reasonable venue access for load-in and load-out at the agreed times. Delays caused by venue access issues that reduce the operating window are not the responsibility of Company."
+    },
+    {
+      h: "6. Liability & Damage",
+      p: "Company is not responsible for any injury, loss, or damage of any nature arising from the acts or omissions of Client or Client's guests. Client agrees to be financially responsible for any loss or damage to Company's equipment or property caused by Client's guests during the event, normal wear and tear excepted."
+    },
+    {
+      h: "7. Force Majeure",
+      p: "Neither party is liable for delay or failure to perform due to causes beyond reasonable control, including severe weather, natural disaster, government order, or other emergency. In such cases, Company will work with Client in good faith to reschedule."
+    },
+    {
+      h: "8. Photo Usage",
+      p: "Client grants Company permission to use photos taken during the event for portfolio, marketing, and promotional purposes (including social media and the Company website), unless Client notifies Company in writing before the event that they opt out of this use."
+    },
+    {
+      h: "9. Entire Agreement",
+      p: "This Agreement, together with the booking details above, represents the entire understanding between Client and Company regarding the event described, and supersedes any prior discussions or proposals."
+    }
+  ],
+  signBlock: "By typing my name and signing below, I, {{clientName}}, confirm that I have read, understood, and agree to the terms of this Agreement, and that my electronic signature below is intended to have the same legal effect as a handwritten signature."
+};
+
+/* =========================================================================
+   Helpers
+   ========================================================================= */
+
+function fillTemplate(str, data){
+  return str.replace(/\{\{(\w+)\}\}/g, (_, k) => (data[k] !== undefined && data[k] !== "") ? data[k] : `[${k}]`);
+}
+
+function b64EncodeUnicode(str){
+  return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) => String.fromCharCode('0x' + p1)));
+}
+function b64DecodeUnicode(str){
+  return decodeURIComponent(Array.prototype.map.call(atob(str), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+}
+function encodeBooking(obj){
+  return encodeURIComponent(b64EncodeUnicode(JSON.stringify(obj)));
+}
+function decodeBooking(str){
+  try { return JSON.parse(b64DecodeUnicode(decodeURIComponent(str))); }
+  catch(e){ return null; }
+}
+function makeBookingId(){
+  return Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,5).toUpperCase();
+}
+function fmtMoney(v){
+  if(v === undefined || v === "") return "";
+  const n = parseFloat(v);
+  return isNaN(n) ? v : "$" + n.toFixed(2);
+}
+function fmtDate(v){
+  if(!v) return "";
+  const d = new Date(v + "T00:00:00");
+  if(isNaN(d)) return v;
+  return d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+}
+
+const app = document.getElementById('app');
+const staffToggle = document.getElementById('staffToggle');
+const staffToggleWrap = document.getElementById('staffToggleWrap');
+const params = new URLSearchParams(window.location.search);
+
+/* =========================================================================
+   VIEW: Landing (no booking id in the link)
+   ========================================================================= */
+function renderLanding(){
+  app.innerHTML = `
+    <div class="card landing">
+      <h2 style="border:none;">Looking for your contract?</h2>
+      <p class="muted">This page needs a personalized signing link. If Twist Photo Booths sent
+      you one, please open that exact link from your email or text message. If you can't find
+      it, reach out and we'll resend it.</p>
+    </div>
+  `;
+}
+
+/* =========================================================================
+   VIEW: Staff — generate a booking link
+   ========================================================================= */
+function renderStaffLogin(){
+  app.innerHTML = `
+    <div class="card">
+      <h2>Staff Login</h2>
+      <label>Passcode</label>
+      <input type="text" id="pass" placeholder="Enter staff passcode">
+      <p class="error-text" id="passErr">Incorrect passcode.</p>
+      <button class="primary" id="passGo">Continue</button>
+    </div>
+  `;
+  document.getElementById('passGo').onclick = () => {
+    const val = document.getElementById('pass').value;
+    if(val === STAFF_PASSCODE){
+      renderStaffForm();
+    } else {
+      document.getElementById('passErr').style.display = 'block';
+    }
+  };
+}
+
+function renderStaffForm(){
+  staffToggleWrap.style.display = 'none';
+  app.innerHTML = `
+    <div class="card">
+      <span class="badge">Staff</span>
+      <h2>Create a Signing Link<small>Fill in the booking, then send the generated link to your client.</small></h2>
+
+      <label>Client full name</label>
+      <input type="text" id="f_clientName" placeholder="Jane Smith">
+
+      <div class="row2">
+        <div><label>Client email</label><input type="email" id="f_clientEmail" placeholder="jane@email.com"></div>
+        <div><label>Client phone</label><input type="tel" id="f_clientPhone" placeholder="(555) 555-5555"></div>
+      </div>
+
+      <div class="row2">
+        <div><label>Event date</label><input type="date" id="f_eventDate"></div>
+        <div><label>Event type</label><input type="text" id="f_eventType" placeholder="Wedding, Birthday, Corporate…"></div>
+      </div>
+
+      <label>Venue name & address</label>
+      <input type="text" id="f_venueName" placeholder="The Grand Hall, 123 Main St">
+
+      <div class="row2">
+        <div><label>Package</label><input type="text" id="f_packageName" placeholder="3-Hour Classic Package"></div>
+        <div><label>Total price</label><input type="text" id="f_price" placeholder="1200"></div>
+      </div>
+
+      <div class="row2">
+        <div><label>Deposit due now</label><input type="text" id="f_deposit" placeholder="300"></div>
+        <div><label>Balance due date</label><input type="date" id="f_balanceDueDate"></div>
+      </div>
+
+      <label>Notes / add-ons (optional)</label>
+      <textarea id="f_notes" placeholder="Custom backdrop, extra hour, prop upgrade…"></textarea>
+
+      <button class="primary" id="genLink">Generate Signing Link</button>
+
+      <div id="linkResult" style="display:none; margin-top:20px;">
+        <label>Send this link to your client</label>
+        <textarea id="linkOut" readonly rows="3"></textarea>
+        <button class="secondary" id="copyLink" style="margin-top:10px;">Copy Link</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>View Signed Contracts</h2>
+      <p class="muted">Once you've completed the Google Sheet + email setup (see
+      "twist-contracts-backend.gs"), every signed contract lands automatically in your
+      Google Sheet and inbox — that Sheet is your dashboard of everything signed.
+      ${APPS_SCRIPT_URL ? '' : '<br><br><strong>Backend not configured yet</strong> — signed contracts currently only download as a PDF for the client; you will not get an automatic copy until APPS_SCRIPT_URL is set in this file.'}</p>
+    </div>
+  `;
+
+  document.getElementById('genLink').onclick = () => {
+    const data = {
+      id: makeBookingId(),
+      clientName: document.getElementById('f_clientName').value.trim(),
+      clientEmail: document.getElementById('f_clientEmail').value.trim(),
+      clientPhone: document.getElementById('f_clientPhone').value.trim(),
+      eventDate: document.getElementById('f_eventDate').value,
+      eventType: document.getElementById('f_eventType').value.trim(),
+      venueName: document.getElementById('f_venueName').value.trim(),
+      packageName: document.getElementById('f_packageName').value.trim(),
+      price: document.getElementById('f_price').value.trim(),
+      deposit: document.getElementById('f_deposit').value.trim(),
+      balanceDueDate: document.getElementById('f_balanceDueDate').value,
+      notes: document.getElementById('f_notes').value.trim(),
+      createdAt: new Date().toISOString()
+    };
+    if(!data.clientName || !data.eventDate){
+      alert('Please fill in at least the client name and event date.');
+      return;
+    }
+    const encoded = encodeBooking(data);
+    const base = window.location.origin + window.location.pathname;
+    const link = `${base}?b=${encoded}`;
+    document.getElementById('linkResult').style.display = 'block';
+    document.getElementById('linkOut').value = link;
+  };
+
+  document.getElementById('copyLink').onclick = () => {
+    const el = document.getElementById('linkOut');
+    el.select();
+    try {
+      navigator.clipboard.writeText(el.value);
+    } catch(e){
+      document.execCommand('copy');
+    }
+    const btn = document.getElementById('copyLink');
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  };
+}
+
+/* =========================================================================
+   VIEW: Client — review + sign
+   ========================================================================= */
+let sigCtx, hasDrawn = false, drawing = false, lastX = 0, lastY = 0;
+
+function renderSigningPage(booking){
+  staffToggleWrap.style.display = 'none';
+
+  const filled = {
+    clientName: booking.clientName || '',
+    eventDate: fmtDate(booking.eventDate),
+    eventType: booking.eventType || '',
+    venueName: booking.venueName || '',
+    packageName: booking.packageName || '',
+    price: fmtMoney(booking.price),
+    deposit: fmtMoney(booking.deposit),
+    balanceDueDate: fmtDate(booking.balanceDueDate)
+  };
+
+  const sectionsHtml = CONTRACT_TEMPLATE.sections.map(s => `
+    <h3>${s.h}</h3>
+    <p>${fillTemplate(s.p, filled)}</p>
+  `).join('');
+
+  app.innerHTML = `
+    <div class="card contract-body">
+      <h2>Event Booking Agreement</h2>
+
+      <div class="fact-grid">
+        <div><span class="label">Client</span>${filled.clientName || '—'}</div>
+        <div><span class="label">Event date</span>${filled.eventDate || '—'}</div>
+        <div><span class="label">Event type</span>${filled.eventType || '—'}</div>
+        <div><span class="label">Venue</span>${filled.venueName || '—'}</div>
+        <div><span class="label">Package</span>${filled.packageName || '—'}</div>
+        <div><span class="label">Total price</span>${filled.price || '—'}</div>
+        <div><span class="label">Deposit</span>${filled.deposit || '—'}</div>
+        <div><span class="label">Balance due</span>${filled.balanceDueDate || '—'}</div>
+      </div>
+
+      <p>${fillTemplate(CONTRACT_TEMPLATE.intro, filled)}</p>
+      ${sectionsHtml}
+    </div>
+
+    <div class="card">
+      <h2>Sign & Submit</h2>
+      <p class="muted">${fillTemplate(CONTRACT_TEMPLATE.signBlock, filled)}</p>
+
+      <label>Type your full legal name</label>
+      <input type="text" id="typedName" placeholder="Full legal name">
+
+      <label>Draw your signature below</label>
+      <canvas id="sigPad"></canvas>
+      <div class="sig-actions">
+        <button id="clearSig">Clear signature</button>
+        <span class="muted" id="sigHint">Use your mouse or finger to sign</span>
+      </div>
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="agreeBox">
+        <label style="margin:0; font-weight:400;" for="agreeBox">I have read and agree to the terms of this Event Booking Agreement.</label>
+      </div>
+
+      <p class="error-text" id="signErr">Please type your name, draw your signature, and check the agreement box.</p>
+      <button class="primary" id="submitSig">Sign & Submit</button>
+    </div>
+  `;
+
+  setupSignaturePad();
+
+  document.getElementById('submitSig').onclick = () => handleSubmit(booking, filled);
+}
+
+function setupSignaturePad(){
+  const canvas = document.getElementById('sigPad');
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  sigCtx = canvas.getContext('2d');
+  sigCtx.scale(ratio, ratio);
+  sigCtx.strokeStyle = '#1d1d1d';
+  sigCtx.lineWidth = 2.2;
+  sigCtx.lineCap = 'round';
+  hasDrawn = false;
+
+  function pos(e){
+    const r = canvas.getBoundingClientRect();
+    const point = e.touches ? e.touches[0] : e;
+    return { x: point.clientX - r.left, y: point.clientY - r.top };
+  }
+  function start(e){
+    e.preventDefault();
+    drawing = true;
+    const p = pos(e);
+    lastX = p.x; lastY = p.y;
+  }
+  function move(e){
+    if(!drawing) return;
+    e.preventDefault();
+    const p = pos(e);
+    sigCtx.beginPath();
+    sigCtx.moveTo(lastX, lastY);
+    sigCtx.lineTo(p.x, p.y);
+    sigCtx.stroke();
+    lastX = p.x; lastY = p.y;
+    hasDrawn = true;
+  }
+  function end(){ drawing = false; }
+
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', end);
+  canvas.addEventListener('touchstart', start, {passive:false});
+  canvas.addEventListener('touchmove', move, {passive:false});
+  canvas.addEventListener('touchend', end);
+
+  document.getElementById('clearSig').onclick = (e) => {
+    e.preventDefault();
+    sigCtx.clearRect(0, 0, canvas.width, canvas.height);
+    hasDrawn = false;
+  };
+}
+
+function handleSubmit(booking, filled){
+  const typedName = document.getElementById('typedName').value.trim();
+  const agreed = document.getElementById('agreeBox').checked;
+  const canvas = document.getElementById('sigPad');
+
+  if(!typedName || !agreed || !hasDrawn){
+    document.getElementById('signErr').style.display = 'block';
+    return;
+  }
+  document.getElementById('signErr').style.display = 'none';
+
+  const btn = document.getElementById('submitSig');
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  const signatureDataUrl = canvas.toDataURL('image/png');
+  const signedAt = new Date().toISOString();
+
+  const payload = Object.assign({}, booking, {
+    signedName: typedName,
+    signature: signatureDataUrl,
+    signedAt: signedAt
+  });
+
+  // Fire-and-forget to the Apps Script backend, if configured.
+  if(APPS_SCRIPT_URL){
+    fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    }).catch(() => { /* fire-and-forget: ignore network errors here */ });
+  }
+
+  generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt);
+  renderSuccess(!!APPS_SCRIPT_URL);
+}
+
+function generateSignedPdf(booking, filled, typedName, signatureDataUrl, signedAt){
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const margin = 48;
+    let y = margin;
+    const maxWidth = 612 - margin*2;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.text('Twist Photo Booths — Event Booking Agreement', margin, y);
+    y += 26;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const facts = [
+      ['Client', filled.clientName], ['Event date', filled.eventDate],
+      ['Event type', filled.eventType], ['Venue', filled.venueName],
+      ['Package', filled.packageName], ['Total price', filled.price],
+      ['Deposit', filled.deposit], ['Balance due', filled.balanceDueDate]
+    ];
+    facts.forEach(([k,v]) => {
+      doc.text(`${k}: ${v || '—'}`, margin, y);
+      y += 14;
+    });
+    y += 10;
+
+    doc.setFontSize(9.5);
+    const addParagraph = (text) => {
+      const lines = doc.splitTextToSize(text, maxWidth);
+      lines.forEach(line => {
+        if(y > 740){ doc.addPage(); y = margin; }
+        doc.text(line, margin, y);
+        y += 12.5;
+      });
+      y += 6;
+    };
+
+    addParagraph(fillTemplate(CONTRACT_TEMPLATE.intro, filled));
+    CONTRACT_TEMPLATE.sections.forEach(s => {
+      doc.setFont('helvetica', 'bold');
+      addParagraph(s.h);
+      doc.setFont('helvetica', 'normal');
+      addParagraph(fillTemplate(s.p, filled));
+    });
+
+    if(y > 650){ doc.addPage(); y = margin; }
+    doc.setFont('helvetica', 'bold');
+    addParagraph('Signature');
+    doc.setFont('helvetica', 'normal');
+    addParagraph(fillTemplate(CONTRACT_TEMPLATE.signBlock, filled));
+
+    doc.text(`Signed name: ${typedName}`, margin, y); y += 16;
+    doc.text(`Signed at: ${new Date(signedAt).toLocaleString()}`, margin, y); y += 10;
+
+    try {
+      doc.addImage(signatureDataUrl, 'PNG', margin, y, 200, 65);
+      y += 75;
+    } catch(e){ /* image add best-effort */ }
+
+    const safeName = (typedName || 'client').replace(/[^a-z0-9]+/gi, '-');
+    doc.save(`Twist-Photo-Booths-Contract-${safeName}.pdf`);
+  } catch(err){
+    console.error('PDF generation failed', err);
+  }
+}
+
+function renderSuccess(backendConfigured){
+  app.innerHTML = `
+    <div class="card success-screen">
+      <div class="icon">✓</div>
+      <h2 style="border:none;">You're all signed!</h2>
+      <p class="muted">A PDF copy of your signed agreement has been downloaded to your device.
+      ${backendConfigured
+        ? 'Twist Photo Booths has also been notified automatically.'
+        : 'Please also send a copy of that PDF to Twist Photo Booths to complete your booking.'}</p>
+    </div>
+  `;
+}
+
+/* =========================================================================
+   Router
+   ========================================================================= */
+staffToggle.onclick = renderStaffLogin;
+
+const bParam = params.get('b');
+if(bParam){
+  const booking = decodeBooking(bParam);
+  if(booking){
+    renderSigningPage(booking);
+  } else {
+    renderLanding();
+  }
+} else {
+  renderLanding();
+}
+</script>
+</body>
+</html>
