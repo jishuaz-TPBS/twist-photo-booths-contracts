@@ -308,43 +308,43 @@ const STAFF_PASSCODE = "twist2026";
 //    finalized wording whenever you're ready. {{fields}} are filled in
 //    automatically from the booking link.
 const CONTRACT_TEMPLATE = {
-  intro: "This Event Booking Agreement (\"Agreement\") is entered into between Twist Photo Booths (\"Company\") and {{clientName}} (\"Client\") for photo booth services at the event described below.",
+  intro: "This Event Booking Agreement (\"Agreement\") is entered into between Twist Photo Booths and {{clientName}} (\"Client\") for photo booth services at the event described below.",
   sections: [
     {
       h: "1. Event & Services",
-      p: "Company will provide photo booth services for Client's event on {{eventDate}} at {{venueName}}, for the package selected: {{packageName}}. Services include use of the photo booth, an on-site attendant for the duration of the rental period, standard props, unlimited sessions during the rental window, and a digital gallery of images after the event, unless otherwise noted in Client's package."
+      p: "Twist Photo Booths will provide photo booth services for Client's event on {{eventDate}} at {{venueName}}, for the package selected: {{packageName}}. Services include use of the photo booth for the duration of the rental period, unlimited sessions during the rental window, and a digital gallery of images after the event, unless otherwise noted in Client's package."
     },
     {
       h: "2. Payment Terms",
-      p: "The total price for services is {{price}}. A non-refundable deposit of {{deposit}} is due at the time of booking to reserve the event date. The remaining balance is due in full no later than {{balanceDueDate}}. Company reserves the right to treat the booking as cancelled if the balance is not received by that date."
+      p: "The total price for services is {{price}}. A non-refundable deposit of {{deposit}} is due at the time of booking to reserve the event date. The remaining balance is due in full no later than {{balanceDueDate}}. Twist Photo Booths reserves the right to treat the booking as cancelled if the balance is not received by that date."
     },
     {
       h: "3. Cancellation & Rescheduling",
-      p: "The deposit is non-refundable under any circumstances, as it reserves Company's availability for the event date. Client may request to reschedule to another available date at no additional fee if written notice is given at least 30 days before the event, subject to Company's availability. Cancellations made less than 14 days before the event remain responsible for the full remaining balance."
+      p: "The deposit is non-refundable under any circumstances, as it reserves Twist Photo Booths' availability for the event date. Client may request to reschedule to another available date at no additional fee if written notice is given at least 14 days before the event, subject to Twist Photo Booths' availability. Cancellations made less than 14 days before the event remain responsible for the full remaining balance."
     },
     {
       h: "4. Overtime",
-      p: "If Client wishes to extend photo booth service beyond the contracted hours, and Company is able to accommodate the request, additional time will be billed at Company's then-current overtime rate, payable on the day of the event before extended service begins."
+      p: "If Client wishes to extend photo booth service beyond the contracted hours, and Twist Photo Booths is able to accommodate the request, additional time will be billed at Twist Photo Booths' then-current overtime rate, payable on the day of the event before extended service begins."
     },
     {
       h: "5. Client Responsibilities",
-      p: "Client is responsible for providing adequate space, a standard electrical outlet within reasonable distance of the booth setup, and safe, reasonable venue access for load-in and load-out at the agreed times. Delays caused by venue access issues that reduce the operating window are not the responsibility of Company."
+      p: "Client is responsible for providing adequate space, a standard electrical outlet within reasonable distance of the booth setup, and safe, reasonable venue access for load-in and load-out at the agreed times. Delays caused by venue access issues that reduce the operating window are not the responsibility of Twist Photo Booths."
     },
     {
       h: "6. Liability & Damage",
-      p: "Company is not responsible for any injury, loss, or damage of any nature arising from the acts or omissions of Client or Client's guests. Client agrees to be financially responsible for any loss or damage to Company's equipment or property caused by Client's guests during the event, normal wear and tear excepted."
+      p: "Twist Photo Booths is not responsible for any injury, loss, or damage of any nature arising from the acts or omissions of Client or Client's guests. Client agrees to be financially responsible for any loss or damage to Twist Photo Booths' equipment or property caused by Client's guests during the event, normal wear and tear excepted."
     },
     {
       h: "7. Force Majeure",
-      p: "Neither party is liable for delay or failure to perform due to causes beyond reasonable control, including severe weather, natural disaster, government order, or other emergency. In such cases, Company will work with Client in good faith to reschedule."
+      p: "Neither party is liable for delay or failure to perform due to causes beyond reasonable control, including severe weather, natural disaster, government order, or other emergency. In such cases, Twist Photo Booths will work with Client in good faith to reschedule."
     },
     {
       h: "8. Photo Usage",
-      p: "Client grants Company permission to use photos taken during the event for portfolio, marketing, and promotional purposes (including social media and the Company website), unless Client notifies Company in writing before the event that they opt out of this use."
+      p: "Client grants Twist Photo Booths permission to use photos taken during the event for portfolio, marketing, and promotional purposes (including social media and the Twist Photo Booths website), unless Client notifies Twist Photo Booths in writing before the event that they opt out of this use."
     },
     {
       h: "9. Entire Agreement",
-      p: "This Agreement, together with the booking details above, represents the entire understanding between Client and Company regarding the event described, and supersedes any prior discussions or proposals."
+      p: "This Agreement, together with the booking details above, represents the entire understanding between Client and Twist Photo Booths regarding the event described, and supersedes any prior discussions or proposals."
     }
   ],
   signBlock: "By typing my name and signing below, I, {{clientName}}, confirm that I have read, understood, and agree to the terms of this Agreement, and that my electronic signature below is intended to have the same legal effect as a handwritten signature."
@@ -439,7 +439,6 @@ function renderStaffForm(){
     <div class="card">
       <span class="badge">Staff</span>
       <h2>Create a Signing Link<small>Fill in the booking, then send the generated link to your client.</small></h2>
-
       <label>Client full name</label>
       <input type="text" id="f_clientName" placeholder="Jane Smith">
 
