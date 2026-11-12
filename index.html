@@ -280,6 +280,18 @@
     border-radius:20px;
     margin-bottom:10px;
   }
+  .staff-nav{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:4px;
+  }
+  .board-link{
+    color:var(--ink-soft);
+    font-size:0.78rem;
+    font-weight:600;
+    text-decoration:underline;
+  }
   .landing{text-align:center; padding:50px 10px;}
   .contract-row{
     display:flex;
@@ -566,7 +578,7 @@ function renderStaffForm(){
   staffToggleWrap.style.display = 'none';
   app.innerHTML = `
     <div class="card">
-      <span class="badge">Staff</span>
+      <div class="staff-nav"><span class="badge">Staff</span><a class="board-link" href="https://jishuaz-tpbs.github.io/Booking-Software/" target="_blank" rel="noopener">Booking Board ↗</a></div>
       <h2>Create a Signing Link<small>Fill in the booking, then send the generated link to your client.</small></h2>
 
       <label>Contract type</label>
@@ -706,7 +718,7 @@ function renderContractsList(){
   staffToggleWrap.style.display = 'none';
   app.innerHTML = `
     <div class="card">
-      <span class="badge">Staff</span>
+      <div class="staff-nav"><span class="badge">Staff</span><a class="board-link" href="https://jishuaz-tpbs.github.io/Booking-Software/" target="_blank" rel="noopener">Booking Board ↗</a></div>
       <h2>Signed Contracts<small>View, download, or delete a client's signed contract.</small></h2>
       <div id="contractsListBody"><p class="muted">Loading…</p></div>
       <button class="secondary" id="backToStaffForm" style="margin-top:20px;">← Back to Create Signing Link</button>
@@ -760,7 +772,7 @@ async function showContractDetail(id){
   staffToggleWrap.style.display = 'none';
   app.innerHTML = `
     <div class="card">
-      <span class="badge">Staff</span>
+      <div class="staff-nav"><span class="badge">Staff</span><a class="board-link" href="https://jishuaz-tpbs.github.io/Booking-Software/" target="_blank" rel="noopener">Booking Board ↗</a></div>
       <h2>Contract Details<small>Full booking record, signature, and signed PDF.</small></h2>
       <div id="contractDetailBody"><p class="muted">Loading…</p></div>
       <button class="secondary" id="backToContractsList" style="margin-top:20px;">← Back to Signed Contracts</button>
